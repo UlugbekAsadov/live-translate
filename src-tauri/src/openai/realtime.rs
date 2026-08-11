@@ -25,15 +25,17 @@ use crate::events::{self, PipelineState};
 use crate::openai::types::{append_payload, commit_payload, session_update_payload, FinalTranscript};
 use crate::state::{Direction, Source};
 
-// GA endpoint: no `?intent=` query and no `OpenAI-Beta` header — sending the
-// beta markers fails with `beta_api_shape_disabled`, and connecting without a
-// `?model=` query fails with `missing_model`. The URL model must be a
-// *realtime* session model (`invalid_model` otherwise); the transcription
-// model is passed separately in `session.update` under
-// `audio.input.transcription.model`, and the session becomes a transcription
-// session via `session.update {type: "transcription"}`.
+// GA endpoint. Established empirically against the live API (2026-08):
+// - `OpenAI-Beta: realtime=v1` header → `beta_api_shape_disabled`;
+// - no query params → `missing_model`;
+// - `?model=<transcription model>` → `invalid_model`;
+// - `?model=<realtime model>` → conversation session; the transcription
+//   `session.update` is then rejected with `invalid_parameter`
+//   ("Passing a transcription session update to a realtime session…").
+// A transcription session must be requested at connect time with
+// `?intent=transcription`; the STT model goes in `session.update` under
+// `audio.input.transcription.model`.
 const REALTIME_URL: &str = "wss://api.openai.com/v1/realtime";
-const REALTIME_SESSION_MODEL: &str = "gpt-realtime-1.5";
 /// ~20 s of 24 kHz PCM16 as base64 (24k * 2 bytes * 20 * 4/3).
 const REPLAY_BUDGET_BYTES: usize = 1_280_000;
 const SESSION_RECYCLE: Duration = Duration::from_secs(25 * 60);
@@ -102,9 +104,9 @@ pub async fn run(app: AppHandle, mut p: RealtimeParams) {
             return;
         }
 
-        // GA requires a realtime session model as a query parameter on the
-        // connect URL; the STT model itself goes into session.update.
-        let url = format!("{REALTIME_URL}?model={REALTIME_SESSION_MODEL}");
+        // Request a transcription-type session at connect time; the STT
+        // model itself goes into session.update.
+        let url = format!("{REALTIME_URL}?intent=transcription");
         let request = match url.into_client_request() {
             Ok(mut r) => {
                 let auth = format!("Bearer {}", p.api_key);
@@ -339,6 +341,7 @@ fn is_fatal_error_code(code: &str) -> bool {
         || code.contains("invalid_model")
         || code.contains("missing_model")
         || code.contains("unknown_parameter")
+        || code.contains("invalid_parameter")
         || code.contains("invalid_value")
         || code.contains("beta_api_shape_disabled")
 }
