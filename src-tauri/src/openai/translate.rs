@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::events;
 use crate::openai::types::FinalTranscript;
-use crate::state::{Direction, Source, TranslationStyle};
+use crate::state::{LangPair, Source, TranslationStyle};
 
 const CHAT_URL: &str = "https://api.openai.com/v1/chat/completions";
 const COALESCE_WINDOW_MS: u64 = 2_000;
@@ -31,23 +31,54 @@ pub struct TranslateParams {
     pub api_key: String,
     pub model: String,
     pub style: TranslationStyle,
-    pub direction_rx: watch::Receiver<Direction>,
+    pub lang_rx: watch::Receiver<LangPair>,
     pub final_rx: mpsc::Receiver<FinalTranscript>,
     pub cancel: CancellationToken,
 }
 
-pub fn build_system_prompt(direction: Direction, style: TranslationStyle) -> String {
-    let direction_line = match direction {
-        Direction::EnUz => "Translate the user's text from English to Uzbek (Latin script).",
-        Direction::UzEn => "Translate the user's text from Uzbek to English.",
-        Direction::AutoUz => {
-            "Detect the language of the user's text. If it is English, translate it to Uzbek \
-             (Latin script). If it is Uzbek, return it unchanged."
-        }
-        Direction::AutoEn => {
-            "Detect the language of the user's text. If it is Uzbek, translate it to English. \
-             If it is English, return it unchanged."
-        }
+/// English name for an ISO 639-1 code from the frontend language dropdowns.
+/// Unknown codes pass through verbatim so new languages work without a
+/// backend change.
+pub fn lang_name(code: &str) -> &str {
+    match code {
+        "en" => "English",
+        "uz" => "Uzbek (Latin script)",
+        "ru" => "Russian",
+        "tr" => "Turkish",
+        "kk" => "Kazakh",
+        "ky" => "Kyrgyz",
+        "tg" => "Tajik",
+        "az" => "Azerbaijani",
+        "ar" => "Arabic",
+        "fa" => "Persian",
+        "es" => "Spanish",
+        "fr" => "French",
+        "de" => "German",
+        "it" => "Italian",
+        "pt" => "Portuguese",
+        "hi" => "Hindi",
+        "zh" => "Chinese",
+        "ja" => "Japanese",
+        "ko" => "Korean",
+        "uk" => "Ukrainian",
+        "id" => "Indonesian",
+        "vi" => "Vietnamese",
+        other => other,
+    }
+}
+
+pub fn build_system_prompt(pair: &LangPair, style: TranslationStyle) -> String {
+    let target = lang_name(&pair.target);
+    let direction_line = if pair.source == "auto" {
+        format!(
+            "Detect the language of the user's text and translate it into {target}. \
+             If the text is already in {target}, return it unchanged."
+        )
+    } else {
+        format!(
+            "Translate the user's text from {} into {target}.",
+            lang_name(&pair.source)
+        )
     };
 
     let style_line = match style {
@@ -140,8 +171,8 @@ pub async fn run(app: AppHandle, http: reqwest::Client, mut p: TranslateParams) 
             continue;
         }
 
-        let direction = *p.direction_rx.borrow();
-        match translate_one(&app, &http, &mut p, &item, direction).await {
+        let pair = p.lang_rx.borrow().clone();
+        match translate_one(&app, &http, &mut p, &item, &pair).await {
             Ok(()) => last_translated = trimmed,
             Err(TranslateError::Cancelled) => return,
             Err(TranslateError::Failed(msg)) => {
@@ -161,14 +192,14 @@ async fn translate_one(
     http: &reqwest::Client,
     p: &mut TranslateParams,
     item: &FinalTranscript,
-    direction: Direction,
+    pair: &LangPair,
 ) -> Result<(), TranslateError> {
     let body = json!({
         "model": p.model,
         "stream": true,
         "temperature": 0.2,
         "messages": [
-            { "role": "system", "content": build_system_prompt(direction, p.style) },
+            { "role": "system", "content": build_system_prompt(pair, p.style) },
             { "role": "user", "content": item.text }
         ]
     });
@@ -189,7 +220,7 @@ async fn translate_one(
 
         match response {
             Ok(resp) if resp.status().is_success() => {
-                return stream_response(app, p, item, direction, resp).await;
+                return stream_response(app, p, item, pair, resp).await;
             }
             Ok(resp) => {
                 let status = resp.status();
@@ -256,7 +287,7 @@ async fn stream_response(
     app: &AppHandle,
     p: &TranslateParams,
     item: &FinalTranscript,
-    direction: Direction,
+    pair: &LangPair,
     resp: reqwest::Response,
 ) -> Result<(), TranslateError> {
     let mut stream = resp.bytes_stream();
@@ -291,7 +322,7 @@ async fn stream_response(
 
     let final_text = full_text.trim();
     if !final_text.is_empty() {
-        events::emit_translation_final(app, p.source, &item.segment_id, final_text, direction);
+        events::emit_translation_final(app, p.source, &item.segment_id, final_text, &pair.target);
     }
     Ok(())
 }
@@ -300,20 +331,35 @@ async fn stream_response(
 mod tests {
     use super::*;
 
+    fn pair(source: &str, target: &str) -> LangPair {
+        LangPair {
+            source: source.into(),
+            target: target.into(),
+        }
+    }
+
     #[test]
     fn prompt_mentions_direction_and_terms() {
-        let en_uz = build_system_prompt(Direction::EnUz, TranslationStyle::Natural);
-        assert!(en_uz.contains("English to Uzbek"));
+        let en_uz = build_system_prompt(&pair("en", "uz"), TranslationStyle::Natural);
+        assert!(en_uz.contains("from English into Uzbek (Latin script)"));
         assert!(en_uz.contains("React"));
         assert!(en_uz.contains("ONLY the translation"));
 
-        let auto = build_system_prompt(Direction::AutoUz, TranslationStyle::Natural);
+        let auto = build_system_prompt(&pair("auto", "uz"), TranslationStyle::Natural);
         assert!(auto.contains("Detect the language"));
         assert!(auto.contains("return it unchanged"));
 
-        let literal = build_system_prompt(Direction::UzEn, TranslationStyle::Literal);
-        assert!(literal.contains("Uzbek to English"));
+        let literal = build_system_prompt(&pair("uz", "en"), TranslationStyle::Literal);
+        assert!(literal.contains("from Uzbek (Latin script) into English"));
         assert!(literal.contains("close to the original wording"));
+
+        // Any language pair from the dropdowns works, including new ones.
+        let ru_tr = build_system_prompt(&pair("ru", "tr"), TranslationStyle::Natural);
+        assert!(ru_tr.contains("from Russian into Turkish"));
+
+        // Unknown codes pass through so the list can grow frontend-only.
+        let custom = build_system_prompt(&pair("auto", "sw"), TranslationStyle::Natural);
+        assert!(custom.contains("into sw"));
     }
 
     fn ft(id: &str, text: &str, ts: u64) -> FinalTranscript {

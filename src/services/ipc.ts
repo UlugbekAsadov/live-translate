@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   DeviceList,
-  Direction,
   OverlayMode,
   Source,
   StartPipelineParams,
@@ -22,8 +21,8 @@ export const ipc = {
   stopPipeline: (source: Source) => invoke<void>("stop_pipeline", { source }),
   pausePipeline: (source: Source, paused: boolean) =>
     invoke<void>("pause_pipeline", { source, paused }),
-  setDirection: (source: Source, direction: Direction) =>
-    invoke<void>("set_direction", { source, direction }),
+  setDirection: (source: Source, sourceLang: string, targetLang: string) =>
+    invoke<void>("set_direction", { source, sourceLang, targetLang }),
 
   toggleOverlay: () => invoke<boolean>("toggle_overlay"),
   setOverlayMode: (mode: OverlayMode) => invoke<void>("set_overlay_mode", { mode }),

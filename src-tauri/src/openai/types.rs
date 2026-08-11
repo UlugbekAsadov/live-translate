@@ -1,7 +1,5 @@
 use serde_json::{json, Value};
 
-use crate::state::Direction;
-
 /// A finalized transcript segment handed from the STT session to the translator.
 #[derive(Clone, Debug)]
 pub struct FinalTranscript {
@@ -12,8 +10,8 @@ pub struct FinalTranscript {
 }
 
 /// `session.update` payload for a Realtime transcription session
-/// (GA shape — see the OpenAI realtime-transcription guide).
-pub fn session_update_payload(model: &str, direction: Direction, use_server_vad: bool) -> Value {
+/// (GA shape, established empirically against the live API 2026-08).
+pub fn session_update_payload(model: &str, use_server_vad: bool) -> Value {
     let turn_detection = if use_server_vad {
         json!({
             "type": "server_vad",
@@ -25,21 +23,17 @@ pub fn session_update_payload(model: &str, direction: Direction, use_server_vad:
         Value::Null
     };
 
-    // Note: no `delay` field — the server rejects it for this model
-    // ("The 'delay' parameter is not supported for this model").
-    let mut transcription = json!({
+    // Note: no `delay` and no `languages` fields — the live API rejects both
+    // for this model ("The '…' parameter is not supported for this model").
+    // The model auto-detects the spoken language; direction only shapes the
+    // translation prompt.
+    let transcription = json!({
         "model": model,
         "prompt": "Technical meeting or interview about software engineering. \
-                   Speakers use English and Uzbek and mix in terms like React, \
+                   Speakers may mix languages and use terms like React, \
                    TypeScript, Next.js, API, backend, frontend, deployment, \
                    Docker, Kubernetes, PostgreSQL."
     });
-    // `uz` is not an accepted hint — omit the field entirely for directions
-    // that may carry Uzbek audio (empty hint list) and let the model detect.
-    let languages = direction.stt_languages();
-    if !languages.is_empty() {
-        transcription["languages"] = json!(languages);
-    }
 
     json!({
         "type": "session.update",
@@ -70,7 +64,7 @@ mod tests {
 
     #[test]
     fn session_update_shape() {
-        let v = session_update_payload("gpt-live-transcribe", Direction::AutoUz, true);
+        let v = session_update_payload("gpt-live-transcribe", true);
         assert_eq!(v["type"], "session.update");
         assert_eq!(v["session"]["type"], "transcription");
         assert_eq!(v["session"]["audio"]["input"]["format"]["rate"], 24000);
@@ -78,9 +72,13 @@ mod tests {
             v["session"]["audio"]["input"]["transcription"]["model"],
             "gpt-live-transcribe"
         );
-        // Uzbek-capable directions must NOT send a languages hint at all.
+        // The live API rejects `languages` and `delay` for this model —
+        // neither may ever be present.
         assert!(v["session"]["audio"]["input"]["transcription"]
             .get("languages")
+            .is_none());
+        assert!(v["session"]["audio"]["input"]["transcription"]
+            .get("delay")
             .is_none());
         assert_eq!(
             v["session"]["audio"]["input"]["turn_detection"]["type"],
@@ -90,10 +88,7 @@ mod tests {
 
     #[test]
     fn manual_mode_disables_turn_detection() {
-        let v = session_update_payload("gpt-live-transcribe", Direction::EnUz, false);
+        let v = session_update_payload("gpt-live-transcribe", false);
         assert!(v["session"]["audio"]["input"]["turn_detection"].is_null());
-        let langs = &v["session"]["audio"]["input"]["transcription"]["languages"];
-        assert_eq!(langs.as_array().unwrap().len(), 1);
-        assert_eq!(langs[0], "en");
     }
 }

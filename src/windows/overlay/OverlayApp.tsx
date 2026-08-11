@@ -3,7 +3,7 @@ import { getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/ap
 import { load } from "@tauri-apps/plugin-store";
 import { useSettings } from "../../hooks/useSettings";
 import { useStatusStore } from "../../stores/statusStore";
-import { DIRECTION_LABELS } from "../../types/settings";
+import { pairLabel } from "../../types/settings";
 import { FullMode } from "./FullMode";
 import { InterviewMode } from "./InterviewMode";
 import { OverlayControls } from "./OverlayControls";
@@ -76,8 +76,8 @@ export function OverlayApp() {
 
   const { overlay } = settings;
   const labels: string[] = [];
-  if (settings.system.enabled) labels.push(DIRECTION_LABELS[settings.system.direction]);
-  if (settings.mic.enabled) labels.push(`🎙 ${DIRECTION_LABELS[settings.mic.direction]}`);
+  if (settings.system.enabled) labels.push(pairLabel(settings.system));
+  if (settings.mic.enabled) labels.push(`🎙 ${pairLabel(settings.mic)}`);
   const reconnecting =
     system.state === "reconnecting" || mic.state === "reconnecting";
 

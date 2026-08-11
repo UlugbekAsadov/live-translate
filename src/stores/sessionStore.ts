@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { create } from "zustand";
 import type {
-  Direction,
   Source,
   TranscriptPayload,
   TranslationDeltaPayload,
@@ -16,7 +15,7 @@ export interface Segment {
   final: boolean;
   translation: string;
   translationFinal: boolean;
-  direction?: Direction;
+  targetLang?: string;
   /** epoch ms when the segment was first seen */
   ts: number;
   translatedAt?: number;
@@ -95,7 +94,7 @@ export const useSessionStore = create<SessionState>((set) => ({
             ...seg,
             translation: p.text,
             translationFinal: true,
-            direction: p.direction,
+            targetLang: p.targetLang,
             translatedAt,
           },
         },

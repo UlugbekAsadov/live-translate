@@ -1,7 +1,7 @@
 import { ipc } from "./ipc";
 import { useSettingsStore } from "../stores/settingsStore";
 import { activeSources, useStatusStore } from "../stores/statusStore";
-import { SWAPPED_DIRECTION } from "../types/settings";
+import { swapPair } from "../types/settings";
 import type { ShortcutAction, Source } from "../types/ipc";
 
 /**
@@ -24,7 +24,8 @@ export async function startAll(): Promise<void> {
     await ipc.startPipeline({
       source,
       deviceId: src.deviceId,
-      direction: src.direction,
+      sourceLang: src.sourceLang,
+      targetLang: src.targetLang,
       sttModel: settings.sttModel,
       translationModel: settings.translationModel,
       useServerVad: settings.useServerVad,
@@ -57,12 +58,13 @@ export async function pauseResume(): Promise<void> {
 export async function swapDirections(): Promise<void> {
   await useSettingsStore.getState().update((s) => ({
     ...s,
-    system: { ...s.system, direction: SWAPPED_DIRECTION[s.system.direction] },
-    mic: { ...s.mic, direction: SWAPPED_DIRECTION[s.mic.direction] },
+    system: swapPair(s.system),
+    mic: swapPair(s.mic),
   }));
   const { settings } = useSettingsStore.getState();
   for (const source of runningSources()) {
-    await ipc.setDirection(source, settings[source].direction);
+    const { sourceLang, targetLang } = settings[source];
+    await ipc.setDirection(source, sourceLang, targetLang);
   }
 }
 

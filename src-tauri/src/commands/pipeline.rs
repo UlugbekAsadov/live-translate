@@ -7,14 +7,17 @@ use crate::audio::pipeline::{self, PipelineConfig};
 use crate::error::{AppError, Result};
 use crate::events::{self, PipelineState};
 use crate::security::keys;
-use crate::state::{AppState, Direction, PipelineHandle, Source, TranslationStyle};
+use crate::state::{AppState, LangPair, PipelineHandle, Source, TranslationStyle};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartPipelineParams {
     pub source: Source,
     pub device_id: Option<String>,
-    pub direction: Direction,
+    /// ISO 639-1 code or "auto"
+    pub source_lang: String,
+    /// ISO 639-1 code
+    pub target_lang: String,
     pub stt_model: String,
     pub translation_model: String,
     pub use_server_vad: bool,
@@ -36,14 +39,17 @@ pub async fn start_pipeline(
     }
 
     let cancel = CancellationToken::new();
-    let (direction_tx, direction_rx) = watch::channel(params.direction);
+    let (lang_tx, lang_rx) = watch::channel(LangPair {
+        source: params.source_lang,
+        target: params.target_lang,
+    });
     let (paused_tx, paused_rx) = watch::channel(false);
 
     pipelines.insert(
         params.source,
         PipelineHandle {
             cancel: cancel.clone(),
-            direction_tx,
+            lang_tx,
             paused_tx,
         },
     );
@@ -61,7 +67,7 @@ pub async fn start_pipeline(
             style: params.translation_style,
         },
         cancel,
-        direction_rx,
+        lang_rx,
         paused_rx,
     ));
 
@@ -105,12 +111,16 @@ pub async fn pause_pipeline(
 pub async fn set_direction(
     state: State<'_, AppState>,
     source: Source,
-    direction: Direction,
+    source_lang: String,
+    target_lang: String,
 ) -> Result<()> {
-    // Settings are owned by the frontend; this only hot-swaps a running
-    // pipeline (updates the STT language hints and the translation prompt).
+    // Settings are owned by the frontend; this only hot-swaps the translation
+    // language pair of a running pipeline (applies from the next segment).
     if let Some(handle) = state.pipelines.lock().await.get(&source) {
-        let _ = handle.direction_tx.send(direction);
+        let _ = handle.lang_tx.send(LangPair {
+            source: source_lang,
+            target: target_lang,
+        });
     }
     Ok(())
 }

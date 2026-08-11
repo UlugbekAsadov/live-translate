@@ -1,9 +1,45 @@
-import type { Direction, OverlayMode, ShortcutAction } from "./ipc";
+import type { ShortcutAction, OverlayMode } from "./ipc";
+
+export interface LanguageOption {
+  /** ISO 639-1 code, or "auto" (source only) */
+  code: string;
+  label: string;
+}
+
+/** Target languages offered in the dropdowns. Source adds "Auto Detect". */
+export const LANGUAGES: LanguageOption[] = [
+  { code: "uz", label: "Uzbek" },
+  { code: "en", label: "English" },
+  { code: "ru", label: "Russian" },
+  { code: "tr", label: "Turkish" },
+  { code: "kk", label: "Kazakh" },
+  { code: "ky", label: "Kyrgyz" },
+  { code: "tg", label: "Tajik" },
+  { code: "az", label: "Azerbaijani" },
+  { code: "ar", label: "Arabic" },
+  { code: "fa", label: "Persian" },
+  { code: "es", label: "Spanish" },
+  { code: "fr", label: "French" },
+  { code: "de", label: "German" },
+  { code: "it", label: "Italian" },
+  { code: "pt", label: "Portuguese" },
+  { code: "hi", label: "Hindi" },
+  { code: "zh", label: "Chinese" },
+  { code: "ja", label: "Japanese" },
+  { code: "ko", label: "Korean" },
+  { code: "uk", label: "Ukrainian" },
+  { code: "id", label: "Indonesian" },
+  { code: "vi", label: "Vietnamese" },
+];
 
 export interface SourceSettings {
   enabled: boolean;
   deviceId: string | null;
-  direction: Direction;
+  /** "auto" or ISO 639-1 code */
+  sourceLang: string;
+  targetLang: string;
+  /** previous target — used by "swap" when sourceLang is "auto" */
+  altTargetLang: string;
 }
 
 export interface OverlaySettings {
@@ -30,8 +66,20 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   sttModel: "gpt-live-transcribe",
   translationModel: "gpt-4o-mini",
-  system: { enabled: true, deviceId: null, direction: "auto_uz" },
-  mic: { enabled: false, deviceId: null, direction: "auto_en" },
+  system: {
+    enabled: true,
+    deviceId: null,
+    sourceLang: "auto",
+    targetLang: "uz",
+    altTargetLang: "en",
+  },
+  mic: {
+    enabled: false,
+    deviceId: null,
+    sourceLang: "auto",
+    targetLang: "en",
+    altTargetLang: "uz",
+  },
   overlay: { opacity: 0.85, fontSize: 16, mode: "interview", clickThrough: false },
   shortcuts: {
     toggle_overlay: "Ctrl+Shift+O",
@@ -44,28 +92,59 @@ export const DEFAULT_SETTINGS: AppSettings = {
   useServerVad: true,
 };
 
+/** Settings saved before the multilanguage dropdowns used a `direction` enum. */
+const LEGACY_DIRECTIONS: Record<string, { sourceLang: string; targetLang: string }> = {
+  en_uz: { sourceLang: "en", targetLang: "uz" },
+  uz_en: { sourceLang: "uz", targetLang: "en" },
+  auto_uz: { sourceLang: "auto", targetLang: "uz" },
+  auto_en: { sourceLang: "auto", targetLang: "en" },
+};
+
+function mergeSource(
+  defaults: SourceSettings,
+  saved: (Partial<SourceSettings> & { direction?: string }) | undefined,
+): SourceSettings {
+  const merged = { ...defaults, ...saved };
+  if (saved?.direction && !saved.sourceLang) {
+    const legacy = LEGACY_DIRECTIONS[saved.direction];
+    if (legacy) {
+      merged.sourceLang = legacy.sourceLang;
+      merged.targetLang = legacy.targetLang;
+      merged.altTargetLang = legacy.targetLang === "uz" ? "en" : "uz";
+    }
+  }
+  delete (merged as { direction?: string }).direction;
+  return merged;
+}
+
 export function mergeSettings(saved: unknown): AppSettings {
-  const s = (saved ?? {}) as Partial<AppSettings>;
+  const s = (saved ?? {}) as Partial<AppSettings> & {
+    system?: Partial<SourceSettings> & { direction?: string };
+    mic?: Partial<SourceSettings> & { direction?: string };
+  };
   return {
     ...DEFAULT_SETTINGS,
     ...s,
-    system: { ...DEFAULT_SETTINGS.system, ...s.system },
-    mic: { ...DEFAULT_SETTINGS.mic, ...s.mic },
+    system: mergeSource(DEFAULT_SETTINGS.system, s.system),
+    mic: mergeSource(DEFAULT_SETTINGS.mic, s.mic),
     overlay: { ...DEFAULT_SETTINGS.overlay, ...s.overlay },
     shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...s.shortcuts },
   };
 }
 
-export const DIRECTION_LABELS: Record<Direction, string> = {
-  en_uz: "EN → UZ",
-  uz_en: "UZ → EN",
-  auto_uz: "AUTO → UZ",
-  auto_en: "AUTO → EN",
-};
+/**
+ * Swap the translation direction of one source.
+ * - fixed source: classic swap (from ⇄ to);
+ * - auto source: stays auto, target toggles with the remembered alternate.
+ */
+export function swapPair(s: SourceSettings): SourceSettings {
+  if (s.sourceLang === "auto") {
+    return { ...s, targetLang: s.altTargetLang, altTargetLang: s.targetLang };
+  }
+  return { ...s, sourceLang: s.targetLang, targetLang: s.sourceLang };
+}
 
-export const SWAPPED_DIRECTION: Record<Direction, Direction> = {
-  en_uz: "uz_en",
-  uz_en: "en_uz",
-  auto_uz: "auto_en",
-  auto_en: "auto_uz",
-};
+export function pairLabel(s: SourceSettings): string {
+  const from = s.sourceLang === "auto" ? "AUTO" : s.sourceLang.toUpperCase();
+  return `${from} → ${s.targetLang.toUpperCase()}`;
+}

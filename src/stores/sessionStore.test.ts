@@ -39,7 +39,7 @@ describe("sessionStore", () => {
       source: "system",
       segmentId: "s-1",
       text: "Salom!",
-      direction: "en_uz",
+      targetLang: "uz",
     });
     const seg = store().segments["s-1"];
     expect(seg.translation).toBe("Salom!");

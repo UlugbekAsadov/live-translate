@@ -3,7 +3,7 @@
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::state::{Direction, Source};
+use crate::state::Source;
 
 pub const EVT_TRANSCRIPT_PARTIAL: &str = "transcript:partial";
 pub const EVT_TRANSCRIPT_FINAL: &str = "transcript:final";
@@ -45,7 +45,7 @@ pub struct TranslationFinalPayload {
     pub source: Source,
     pub segment_id: String,
     pub text: String,
-    pub direction: Direction,
+    pub target_lang: String,
 }
 
 #[derive(Clone, Copy, Serialize, PartialEq, Eq, Debug)]
@@ -126,7 +126,7 @@ pub fn emit_translation_final(
     source: Source,
     segment_id: &str,
     text: &str,
-    direction: Direction,
+    target_lang: &str,
 ) {
     let _ = app.emit(
         EVT_TRANSLATION_FINAL,
@@ -134,7 +134,7 @@ pub fn emit_translation_final(
             source,
             segment_id: segment_id.to_string(),
             text: text.to_string(),
-            direction,
+            target_lang: target_lang.to_string(),
         },
     );
 }

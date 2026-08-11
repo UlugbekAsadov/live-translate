@@ -6,7 +6,7 @@ import { useSegments, useSessionStore } from "../stores/sessionStore";
 import { isSourceActive, useStatusStore } from "../stores/statusStore";
 import { AudioLevelMeter } from "../components/AudioLevelMeter";
 import { DeviceSelector } from "../components/DeviceSelector";
-import { DirectionToggle } from "../components/DirectionToggle";
+import { LanguagePicker } from "../components/LanguagePicker";
 import { StatusPill } from "../components/StatusPill";
 import { TranslationCard } from "../components/TranslationCard";
 import type { Source } from "../types/ipc";
@@ -41,12 +41,14 @@ function SourcePanel({ source, title }: { source: Source; title: string }) {
           disabled={running || !cfg.enabled}
           onChange={(deviceId) => update((s) => ({ ...s, [source]: { ...cfg, deviceId } }))}
         />
-        <DirectionToggle
-          value={cfg.direction}
+        <LanguagePicker
+          value={cfg}
           disabled={!cfg.enabled}
-          onChange={async (direction) => {
-            await update((s) => ({ ...s, [source]: { ...cfg, direction } }));
-            if (running) await ipc.setDirection(source, direction);
+          onChange={async (next) => {
+            await update((s) => ({ ...s, [source]: next }));
+            if (running) {
+              await ipc.setDirection(source, next.sourceLang, next.targetLang);
+            }
           }}
         />
         <AudioLevelMeter rms={status.rms} />

@@ -20,27 +20,15 @@ impl std::fmt::Display for Source {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Direction {
-    EnUz,
-    UzEn,
-    AutoUz,
-    AutoEn,
-}
-
-impl Direction {
-    /// ISO 639-1 hints for the transcription session.
-    ///
-    /// `gpt-live-transcribe` rejects `uz` as a language hint (it is not in
-    /// the supported-hint list), so any direction that may carry Uzbek audio
-    /// sends no hint at all and lets the model detect the language itself.
-    pub fn stt_languages(&self) -> Vec<&'static str> {
-        match self {
-            Direction::EnUz => vec!["en"],
-            Direction::UzEn | Direction::AutoUz | Direction::AutoEn => vec![],
-        }
-    }
+/// A translation language pair. `source` may be `"auto"` for auto-detection;
+/// codes are ISO 639-1 strings chosen in the frontend language dropdowns.
+/// The STT session ignores this (the live API rejects language hints for the
+/// transcription model); it only shapes the translation prompt.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LangPair {
+    pub source: String,
+    pub target: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,7 +41,7 @@ pub enum TranslationStyle {
 /// Control handles for one running per-source pipeline.
 pub struct PipelineHandle {
     pub cancel: CancellationToken,
-    pub direction_tx: watch::Sender<Direction>,
+    pub lang_tx: watch::Sender<LangPair>,
     pub paused_tx: watch::Sender<bool>,
 }
 

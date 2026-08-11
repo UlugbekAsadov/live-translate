@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 use crate::audio::vad::SegmentEvent;
 use crate::events::{self, PipelineState};
 use crate::openai::types::{append_payload, commit_payload, session_update_payload, FinalTranscript};
-use crate::state::{Direction, Source};
+use crate::state::Source;
 
 // GA endpoint. Established empirically against the live API (2026-08):
 // - `OpenAI-Beta: realtime=v1` header → `beta_api_shape_disabled`;
@@ -46,7 +46,6 @@ pub struct RealtimeParams {
     pub api_key: String,
     pub model: String,
     pub use_server_vad: bool,
-    pub direction_rx: watch::Receiver<Direction>,
     pub seg_rx: mpsc::Receiver<SegmentEvent>,
     pub final_tx: mpsc::Sender<FinalTranscript>,
     pub cancel: CancellationToken,
@@ -211,8 +210,7 @@ async fn run_session(
 ) -> SessionExit {
     let (mut tx, mut rx) = ws.split();
 
-    let direction = *p.direction_rx.borrow();
-    let update = session_update_payload(&p.model, direction, p.use_server_vad);
+    let update = session_update_payload(&p.model, p.use_server_vad);
     if tx.send(Message::text(update.to_string())).await.is_err() {
         return SessionExit::Reconnect;
     }
@@ -255,16 +253,6 @@ async fn run_session(
             _ = ping.tick() => {
                 if tx.send(Message::Ping(Vec::new().into())).await.is_err() {
                     return SessionExit::Reconnect;
-                }
-            }
-
-            changed = p.direction_rx.changed() => {
-                if changed.is_ok() {
-                    let d = *p.direction_rx.borrow_and_update();
-                    let update = session_update_payload(&p.model, d, p.use_server_vad);
-                    if tx.send(Message::text(update.to_string())).await.is_err() {
-                        return SessionExit::Reconnect;
-                    }
                 }
             }
 

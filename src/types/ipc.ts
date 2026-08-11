@@ -3,8 +3,6 @@
 
 export type Source = "system" | "mic";
 
-export type Direction = "en_uz" | "uz_en" | "auto_uz" | "auto_en";
-
 export type PipelineState =
   | "idle"
   | "starting"
@@ -30,7 +28,10 @@ export interface DeviceList {
 export interface StartPipelineParams {
   source: Source;
   deviceId: string | null;
-  direction: Direction;
+  /** "auto" or ISO 639-1 code */
+  sourceLang: string;
+  /** ISO 639-1 code */
+  targetLang: string;
   sttModel: string;
   translationModel: string;
   useServerVad: boolean;
@@ -54,7 +55,7 @@ export interface TranslationFinalPayload {
   source: Source;
   segmentId: string;
   text: string;
-  direction: Direction;
+  targetLang: string;
 }
 
 export interface PipelineStatusPayload {

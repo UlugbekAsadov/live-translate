@@ -22,7 +22,7 @@ use crate::events::{self, PipelineState};
 use crate::openai::realtime::{self, RealtimeParams};
 use crate::openai::translate::{self, TranslateParams};
 use crate::openai::types::FinalTranscript;
-use crate::state::{AppState, Direction, Source, TranslationStyle};
+use crate::state::{AppState, LangPair, Source, TranslationStyle};
 
 const OPENAI_SAMPLE_RATE: u32 = 24_000;
 const CAPTURE_RETRIES: u32 = 3;
@@ -76,7 +76,7 @@ pub async fn run(
     app: AppHandle,
     cfg: PipelineConfig,
     cancel: CancellationToken,
-    direction_rx: watch::Receiver<Direction>,
+    lang_rx: watch::Receiver<LangPair>,
     paused_rx: watch::Receiver<bool>,
 ) {
     let source = cfg.source;
@@ -112,7 +112,6 @@ pub async fn run(
             api_key: cfg.api_key.clone(),
             model: cfg.stt_model.clone(),
             use_server_vad: cfg.use_server_vad,
-            direction_rx: direction_rx.clone(),
             seg_rx,
             final_tx,
             cancel: cancel.clone(),
@@ -128,7 +127,7 @@ pub async fn run(
             api_key: cfg.api_key,
             model: cfg.translation_model,
             style: cfg.style,
-            direction_rx,
+            lang_rx,
             final_rx,
             cancel: cancel.clone(),
         },
