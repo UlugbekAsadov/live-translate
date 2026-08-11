@@ -26,7 +26,8 @@ use crate::openai::types::{append_payload, commit_payload, session_update_payloa
 use crate::state::{Direction, Source};
 
 // GA endpoint: no `?intent=` query and no `OpenAI-Beta` header — sending the
-// beta markers now fails with `beta_api_shape_disabled`. The session becomes a
+// beta markers fails with `beta_api_shape_disabled`, and connecting without a
+// `?model=` query fails with `missing_model`. The session becomes a
 // transcription session via `session.update {type: "transcription"}`.
 const REALTIME_URL: &str = "wss://api.openai.com/v1/realtime";
 /// ~20 s of 24 kHz PCM16 as base64 (24k * 2 bytes * 20 * 4/3).
@@ -97,7 +98,9 @@ pub async fn run(app: AppHandle, mut p: RealtimeParams) {
             return;
         }
 
-        let request = match REALTIME_URL.into_client_request() {
+        // GA requires the model as a query parameter on the connect URL.
+        let url = format!("{REALTIME_URL}?model={}", p.model);
+        let request = match url.into_client_request() {
             Ok(mut r) => {
                 let auth = format!("Bearer {}", p.api_key);
                 match auth.parse() {
