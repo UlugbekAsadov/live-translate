@@ -25,7 +25,10 @@ use crate::events::{self, PipelineState};
 use crate::openai::types::{append_payload, commit_payload, session_update_payload, FinalTranscript};
 use crate::state::{Direction, Source};
 
-const REALTIME_URL: &str = "wss://api.openai.com/v1/realtime?intent=transcription";
+// GA endpoint: no `?intent=` query and no `OpenAI-Beta` header — sending the
+// beta markers now fails with `beta_api_shape_disabled`. The session becomes a
+// transcription session via `session.update {type: "transcription"}`.
+const REALTIME_URL: &str = "wss://api.openai.com/v1/realtime";
 /// ~20 s of 24 kHz PCM16 as base64 (24k * 2 bytes * 20 * 4/3).
 const REPLAY_BUDGET_BYTES: usize = 1_280_000;
 const SESSION_RECYCLE: Duration = Duration::from_secs(25 * 60);
@@ -100,9 +103,6 @@ pub async fn run(app: AppHandle, mut p: RealtimeParams) {
                 match auth.parse() {
                     Ok(v) => {
                         r.headers_mut().insert("Authorization", v);
-                        if let Ok(beta) = "realtime=v1".parse() {
-                            r.headers_mut().insert("OpenAI-Beta", beta);
-                        }
                         r
                     }
                     Err(_) => {
