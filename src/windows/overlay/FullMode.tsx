@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
-import { selectSegments, useSessionStore } from "../../stores/sessionStore";
+import { useSegments } from "../../stores/sessionStore";
 import { TranslationCard } from "../../components/TranslationCard";
 
 export function FullMode() {
-  const segments = useSessionStore(selectSegments);
+  const segments = useSegments();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

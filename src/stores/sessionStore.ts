@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 import type {
   Direction,
@@ -108,4 +109,15 @@ export const useSessionStore = create<SessionState>((set) => ({
 /** Ordered segments, oldest first. */
 export function selectSegments(s: SessionState): Segment[] {
   return s.order.map((id) => s.segments[id]).filter(Boolean);
+}
+
+/**
+ * React hook for the ordered segment list. Selects the two stable references
+ * and memoizes the derived array — a selector returning a fresh array every
+ * call would make useSyncExternalStore re-render forever.
+ */
+export function useSegments(): Segment[] {
+  const order = useSessionStore((s) => s.order);
+  const segments = useSessionStore((s) => s.segments);
+  return useMemo(() => order.map((id) => segments[id]).filter(Boolean), [order, segments]);
 }

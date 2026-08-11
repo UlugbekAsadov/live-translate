@@ -1,4 +1,4 @@
-import { selectSegments, useSessionStore } from "../../stores/sessionStore";
+import { useSegments, useSessionStore } from "../../stores/sessionStore";
 
 /**
  * Compact mode for live interviews: the latest translation is prominent,
@@ -6,7 +6,7 @@ import { selectSegments, useSessionStore } from "../../stores/sessionStore";
  * live so the overlay never feels dead while someone is speaking.
  */
 export function InterviewMode() {
-  const segments = useSessionStore(selectSegments);
+  const segments = useSegments();
   const lastLatencyMs = useSessionStore((s) => s.lastLatencyMs);
 
   const recent = segments.slice(-3);

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ipc } from "../services/ipc";
 import { startAll, stopAll } from "../services/controller";
 import { useSettings } from "../hooks/useSettings";
-import { useSessionStore, selectSegments } from "../stores/sessionStore";
+import { useSegments, useSessionStore } from "../stores/sessionStore";
 import { isSourceActive, useStatusStore } from "../stores/statusStore";
 import { AudioLevelMeter } from "../components/AudioLevelMeter";
 import { DeviceSelector } from "../components/DeviceSelector";
@@ -60,7 +60,7 @@ export function Dashboard() {
   const mic = useStatusStore((s) => s.mic);
   const lastError = useStatusStore((s) => s.lastError);
   const clearError = useStatusStore((s) => s.clearError);
-  const segments = useSessionStore(selectSegments);
+  const segments = useSegments();
   const lastLatencyMs = useSessionStore((s) => s.lastLatencyMs);
   const { settings } = useSettings();
 
