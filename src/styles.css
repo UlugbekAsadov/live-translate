@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100vh;
+}
+
+body.main-window {
+  background: #0b0f14;
+  color: #e5e9ef;
+}
+
+/* The overlay window is fully transparent; the app draws its own card. */
+body.overlay-window {
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
