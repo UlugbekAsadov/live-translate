@@ -25,13 +25,14 @@ pub fn session_update_payload(model: &str, direction: Direction, use_server_vad:
         Value::Null
     };
 
+    // Note: no `delay` field — the server rejects it for this model
+    // ("The 'delay' parameter is not supported for this model").
     let mut transcription = json!({
         "model": model,
         "prompt": "Technical meeting or interview about software engineering. \
                    Speakers use English and Uzbek and mix in terms like React, \
                    TypeScript, Next.js, API, backend, frontend, deployment, \
-                   Docker, Kubernetes, PostgreSQL.",
-        "delay": "low"
+                   Docker, Kubernetes, PostgreSQL."
     });
     // `uz` is not an accepted hint — omit the field entirely for directions
     // that may carry Uzbek audio (empty hint list) and let the model detect.
