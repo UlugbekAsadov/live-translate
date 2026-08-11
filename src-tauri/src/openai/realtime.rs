@@ -27,9 +27,13 @@ use crate::state::{Direction, Source};
 
 // GA endpoint: no `?intent=` query and no `OpenAI-Beta` header — sending the
 // beta markers fails with `beta_api_shape_disabled`, and connecting without a
-// `?model=` query fails with `missing_model`. The session becomes a
-// transcription session via `session.update {type: "transcription"}`.
+// `?model=` query fails with `missing_model`. The URL model must be a
+// *realtime* session model (`invalid_model` otherwise); the transcription
+// model is passed separately in `session.update` under
+// `audio.input.transcription.model`, and the session becomes a transcription
+// session via `session.update {type: "transcription"}`.
 const REALTIME_URL: &str = "wss://api.openai.com/v1/realtime";
+const REALTIME_SESSION_MODEL: &str = "gpt-realtime-1.5";
 /// ~20 s of 24 kHz PCM16 as base64 (24k * 2 bytes * 20 * 4/3).
 const REPLAY_BUDGET_BYTES: usize = 1_280_000;
 const SESSION_RECYCLE: Duration = Duration::from_secs(25 * 60);
@@ -98,8 +102,9 @@ pub async fn run(app: AppHandle, mut p: RealtimeParams) {
             return;
         }
 
-        // GA requires the model as a query parameter on the connect URL.
-        let url = format!("{REALTIME_URL}?model={}", p.model);
+        // GA requires a realtime session model as a query parameter on the
+        // connect URL; the STT model itself goes into session.update.
+        let url = format!("{REALTIME_URL}?model={REALTIME_SESSION_MODEL}");
         let request = match url.into_client_request() {
             Ok(mut r) => {
                 let auth = format!("Bearer {}", p.api_key);
@@ -305,7 +310,7 @@ async fn run_session(
                 Some(Ok(Message::Text(text))) => {
                     match handle_server_event(app, p, &text, &mut partials).await {
                         ServerEventOutcome::Continue => {}
-                        ServerEventOutcome::FatalAuth => {
+                        ServerEventOutcome::Fatal => {
                             events::emit_status(app, p.source, PipelineState::Error, None);
                             return SessionExit::Fatal;
                         }
@@ -323,7 +328,19 @@ async fn run_session(
 
 enum ServerEventOutcome {
     Continue,
-    FatalAuth,
+    /// Stop the pipeline: retrying cannot help (auth or config rejection).
+    Fatal,
+}
+
+/// Server error codes where reconnecting would just loop forever.
+fn is_fatal_error_code(code: &str) -> bool {
+    code.contains("invalid_api_key")
+        || code.contains("auth")
+        || code.contains("invalid_model")
+        || code.contains("missing_model")
+        || code.contains("unknown_parameter")
+        || code.contains("invalid_value")
+        || code.contains("beta_api_shape_disabled")
 }
 
 async fn handle_server_event(
@@ -373,9 +390,14 @@ async fn handle_server_event(
             tracing::warn!(source = %p.source, code, message, "realtime server error");
             if code.contains("invalid_api_key") || code.contains("auth") {
                 events::emit_app_error(app, "invalid_key", message, Some(p.source), false);
-                return ServerEventOutcome::FatalAuth;
+                return ServerEventOutcome::Fatal;
             }
-            // Non-fatal server errors (e.g. commit on empty buffer) are logged only.
+            if is_fatal_error_code(code) {
+                // Config rejection: stop instead of looping on reconnect.
+                events::emit_app_error(app, "internal", message, Some(p.source), false);
+                return ServerEventOutcome::Fatal;
+            }
+            // Transient server errors (e.g. commit on empty buffer) are logged only.
         }
         _ => {
             tracing::trace!(source = %p.source, event_type, "unhandled realtime event");
