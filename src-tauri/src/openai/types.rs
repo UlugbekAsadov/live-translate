@@ -25,6 +25,21 @@ pub fn session_update_payload(model: &str, direction: Direction, use_server_vad:
         Value::Null
     };
 
+    let mut transcription = json!({
+        "model": model,
+        "prompt": "Technical meeting or interview about software engineering. \
+                   Speakers use English and Uzbek and mix in terms like React, \
+                   TypeScript, Next.js, API, backend, frontend, deployment, \
+                   Docker, Kubernetes, PostgreSQL.",
+        "delay": "low"
+    });
+    // `uz` is not an accepted hint — omit the field entirely for directions
+    // that may carry Uzbek audio (empty hint list) and let the model detect.
+    let languages = direction.stt_languages();
+    if !languages.is_empty() {
+        transcription["languages"] = json!(languages);
+    }
+
     json!({
         "type": "session.update",
         "session": {
@@ -32,15 +47,7 @@ pub fn session_update_payload(model: &str, direction: Direction, use_server_vad:
             "audio": {
                 "input": {
                     "format": { "type": "audio/pcm", "rate": 24000 },
-                    "transcription": {
-                        "model": model,
-                        "languages": direction.stt_languages(),
-                        "prompt": "Technical meeting or interview about software engineering. \
-                                   Speakers use English and Uzbek and mix in terms like React, \
-                                   TypeScript, Next.js, API, backend, frontend, deployment, \
-                                   Docker, Kubernetes, PostgreSQL.",
-                        "delay": "low"
-                    },
+                    "transcription": transcription,
                     "turn_detection": turn_detection
                 }
             }
@@ -70,8 +77,10 @@ mod tests {
             v["session"]["audio"]["input"]["transcription"]["model"],
             "gpt-live-transcribe"
         );
-        let langs = &v["session"]["audio"]["input"]["transcription"]["languages"];
-        assert_eq!(langs.as_array().unwrap().len(), 2);
+        // Uzbek-capable directions must NOT send a languages hint at all.
+        assert!(v["session"]["audio"]["input"]["transcription"]
+            .get("languages")
+            .is_none());
         assert_eq!(
             v["session"]["audio"]["input"]["turn_detection"]["type"],
             "server_vad"

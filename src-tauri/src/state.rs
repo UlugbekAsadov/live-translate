@@ -31,11 +31,14 @@ pub enum Direction {
 
 impl Direction {
     /// ISO 639-1 hints for the transcription session.
+    ///
+    /// `gpt-live-transcribe` rejects `uz` as a language hint (it is not in
+    /// the supported-hint list), so any direction that may carry Uzbek audio
+    /// sends no hint at all and lets the model detect the language itself.
     pub fn stt_languages(&self) -> Vec<&'static str> {
         match self {
             Direction::EnUz => vec!["en"],
-            Direction::UzEn => vec!["uz"],
-            Direction::AutoUz | Direction::AutoEn => vec!["en", "uz"],
+            Direction::UzEn | Direction::AutoUz | Direction::AutoEn => vec![],
         }
     }
 }
